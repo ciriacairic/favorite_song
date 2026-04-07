@@ -57,7 +57,21 @@ export async function getLastfmSession(
   return { key: session.key, name: session.name }
 }
 
-/** Fetches the user's top tracks from Last.fm. */
+/** Fetches album artwork from the iTunes Search API. Returns "" if not found. */
+async function getItunesArtwork(artist: string, title: string): Promise<string> {
+  const term = encodeURIComponent(`${artist} ${title}`)
+  const url = `https://itunes.apple.com/search?term=${term}&media=music&entity=song&limit=1`
+  try {
+    const data = await httpsGetJson(url) as { results?: Array<{ artworkUrl100?: string }> }
+    const raw = data.results?.[0]?.artworkUrl100 ?? ""
+    // Upgrade to 600x600 by replacing the size token in the URL
+    return raw ? raw.replace("100x100bb", "600x600bb") : ""
+  } catch {
+    return ""
+  }
+}
+
+/** Fetches the user's top tracks from Last.fm, with artwork from iTunes. */
 export async function getTopTracks(
   username: string,
   period: Period = "overall",
@@ -72,25 +86,27 @@ export async function getTopTracks(
   }
 
   const toptracks = (data.toptracks as { track?: unknown[] })?.track ?? []
-  return toptracks.map(
-    (t: unknown) => {
-      const track = t as {
-        name: string
-        artist: { name: string }
-        image?: Array<{ "#text": string; size: string }>
-        playcount: string
-        url: string
-      }
-      return {
-        title: track.name,
-        artist: track.artist.name,
-        albumCover:
-          track.image?.find((img) => img.size === "large")?.["#text"] ?? "",
-        playCount: parseInt(track.playcount, 10),
-        lastfmUrl: track.url,
-      }
+
+  const tracks = toptracks.map((t: unknown) => {
+    const track = t as {
+      name: string
+      artist: { name: string }
+      playcount: string
+      url: string
     }
+    return {
+      title: track.name,
+      artist: track.artist.name,
+      playCount: parseInt(track.playcount, 10),
+      lastfmUrl: track.url,
+    }
+  })
+
+  const artworks = await Promise.all(
+    tracks.map((t) => getItunesArtwork(t.artist, t.title))
   )
+
+  return tracks.map((t, i) => ({ ...t, albumCover: artworks[i] }))
 }
 
 /** Fetches basic user info from Last.fm. */
