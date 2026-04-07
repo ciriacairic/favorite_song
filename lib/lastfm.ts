@@ -1,4 +1,5 @@
 import { createHash } from "crypto"
+import { get as httpsGet } from "https"
 import type { Track, Period } from "@/types"
 
 const API_BASE = "https://ws.audioscrobbler.com/2.0"
@@ -14,6 +15,26 @@ export function lastfmSignature(params: Record<string, string>): string {
     .digest("hex")
 }
 
+/**
+ * Makes an HTTPS GET request using Node's https module, bypassing Next.js's
+ * patched global fetch (which has connectivity issues in dev mode).
+ */
+function httpsGetJson(url: string): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    httpsGet(url, (res) => {
+      let data = ""
+      res.on("data", (chunk: string) => (data += chunk))
+      res.on("end", () => {
+        try {
+          resolve(JSON.parse(data))
+        } catch (e) {
+          reject(e)
+        }
+      })
+    }).on("error", reject)
+  })
+}
+
 /** Exchanges a Last.fm auth token for a permanent session key. */
 export async function getLastfmSession(
   token: string
@@ -26,14 +47,14 @@ export async function getLastfmSession(
   })
 
   const url = `${API_BASE}/?method=auth.getSession&api_key=${apiKey}&token=${token}&api_sig=${sig}&format=json`
-  const res = await fetch(url)
-  const data = await res.json()
+  const data = await httpsGetJson(url) as Record<string, unknown>
 
   if (data.error) {
     throw new Error(`Last.fm auth error ${data.error}: ${data.message}`)
   }
 
-  return { key: data.session.key, name: data.session.name }
+  const session = data.session as { key: string; name: string }
+  return { key: session.key, name: session.name }
 }
 
 /** Fetches the user's top tracks from Last.fm. */
@@ -44,28 +65,31 @@ export async function getTopTracks(
 ): Promise<Track[]> {
   const apiKey = process.env.LASTFM_API_KEY!
   const url = `${API_BASE}/?method=user.getTopTracks&user=${encodeURIComponent(username)}&api_key=${apiKey}&period=${period}&limit=${limit}&format=json`
-  const res = await fetch(url, { next: { revalidate: 300 } })
-  const data = await res.json()
+  const data = await httpsGetJson(url) as Record<string, unknown>
 
-  if (data.error) {
+  if ((data as Record<string, unknown>).error) {
     throw new Error(`Last.fm error ${data.error}: ${data.message}`)
   }
 
-  return (data.toptracks?.track ?? []).map(
-    (t: {
-      name: string
-      artist: { name: string }
-      image?: Array<{ "#text": string; size: string }>
-      playcount: string
-      url: string
-    }) => ({
-      title: t.name,
-      artist: t.artist.name,
-      albumCover:
-        t.image?.find((img) => img.size === "large")?.["#text"] ?? "",
-      playCount: parseInt(t.playcount, 10),
-      lastfmUrl: t.url,
-    })
+  const toptracks = (data.toptracks as { track?: unknown[] })?.track ?? []
+  return toptracks.map(
+    (t: unknown) => {
+      const track = t as {
+        name: string
+        artist: { name: string }
+        image?: Array<{ "#text": string; size: string }>
+        playcount: string
+        url: string
+      }
+      return {
+        title: track.name,
+        artist: track.artist.name,
+        albumCover:
+          track.image?.find((img) => img.size === "large")?.["#text"] ?? "",
+        playCount: parseInt(track.playcount, 10),
+        lastfmUrl: track.url,
+      }
+    }
   )
 }
 
@@ -73,8 +97,7 @@ export async function getTopTracks(
 export async function getUserInfo(username: string) {
   const apiKey = process.env.LASTFM_API_KEY!
   const url = `${API_BASE}/?method=user.getInfo&user=${encodeURIComponent(username)}&api_key=${apiKey}&format=json`
-  const res = await fetch(url)
-  const data = await res.json()
-  if (data.error) throw new Error(data.message)
+  const data = await httpsGetJson(url) as Record<string, unknown>
+  if (data.error) throw new Error(data.message as string)
   return data.user
 }

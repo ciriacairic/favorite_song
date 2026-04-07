@@ -31,7 +31,8 @@ const LastFmProvider: OAuthConfig<LastFmProfile> = {
   token: {
     url: "https://ws.audioscrobbler.com/2.0",
     async request({ params }) {
-      const token = params.token as string | undefined
+      // Middleware renames Last.fm's ?token= to ?code= so openid-client keeps it
+      const token = params.code as string | undefined
       if (!token) throw new Error("No Last.fm token in callback")
       const session = await getLastfmSession(token)
       return {
@@ -47,14 +48,14 @@ const LastFmProvider: OAuthConfig<LastFmProfile> = {
     url: "https://ws.audioscrobbler.com/2.0",
     async request({ tokens }) {
       const username = (tokens as Record<string, unknown>).lastfm_user as string
-      const user = await getUserInfo(username)
+      const user = await getUserInfo(username) as Record<string, unknown>
       const avatar: string =
         (user.image as Array<{ "#text": string; size: string }>)?.find(
           (img) => img.size === "large"
         )?.["#text"] ?? ""
       return {
         id: username,
-        name: user.realname || username,
+        name: (user.realname as string) || username,
         image: avatar || undefined,
         sessionKey: tokens.access_token as string,
       }
