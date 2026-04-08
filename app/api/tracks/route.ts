@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getTopTracks } from "@/lib/lastfm"
+import { getItunesArtwork } from "@/lib/itunes"
 import { getCachedSong, cacheSong } from "@/lib/songCache"
 import { searchYouTubeVideoId } from "@/lib/youtube"
-import type { Period } from "@/types"
+import type { Period, Track } from "@/types"
 
 const VALID_PERIODS: Period[] = ["overall", "12month", "6month", "3month", "7day"]
 
@@ -23,31 +24,38 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const tracks = await getTopTracks(username, period, limit)
+    const rawTracks = await getTopTracks(username, period, limit)
 
     // Check cache for all tracks in parallel
     const cached = await Promise.all(
-      tracks.map((t) => getCachedSong(t.artist, t.title))
+      rawTracks.map((t) => getCachedSong(t.artist, t.title))
     )
 
-    // For cache misses, fetch from YouTube and write to cache
-    const videoIds = await Promise.all(
-      tracks.map(async (t, i) => {
+    // For cache misses, fetch iTunes + YouTube in parallel, then write to cache
+    const enriched = await Promise.all(
+      rawTracks.map(async (t, i) => {
         if (cached[i] !== null) {
-          return cached[i]!.youtube_video_id
+          return {
+            albumCover: cached[i]!.album_cover ?? "",
+            youtubeVideoId: cached[i]!.youtube_video_id,
+          }
         }
-        const videoId = await searchYouTubeVideoId(t.title, t.artist)
-        await cacheSong(t.artist, t.title, videoId, t.albumCover).catch(console.error)
-        return videoId
+        const [albumCover, youtubeVideoId] = await Promise.all([
+          getItunesArtwork(t.artist, t.title),
+          searchYouTubeVideoId(t.title, t.artist),
+        ])
+        await cacheSong(t.artist, t.title, youtubeVideoId, albumCover).catch(console.error)
+        return { albumCover, youtubeVideoId }
       })
     )
 
-    const enrichedTracks = tracks.map((t, i) => ({
+    const tracks: Track[] = rawTracks.map((t, i) => ({
       ...t,
-      youtubeVideoId: videoIds[i] ?? null,
+      albumCover: enriched[i].albumCover,
+      youtubeVideoId: enriched[i].youtubeVideoId,
     }))
 
-    return NextResponse.json({ tracks: enrichedTracks })
+    return NextResponse.json({ tracks })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }

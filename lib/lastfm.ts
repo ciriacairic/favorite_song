@@ -1,6 +1,6 @@
 import { createHash } from "crypto"
 import { get as httpsGet } from "https"
-import type { Track, Period } from "@/types"
+import type { Period } from "@/types"
 
 const API_BASE = "https://ws.audioscrobbler.com/2.0"
 
@@ -57,37 +57,23 @@ export async function getLastfmSession(
   return { key: session.key, name: session.name }
 }
 
-/** Fetches album artwork from the iTunes Search API. Returns "" if not found. */
-async function getItunesArtwork(artist: string, title: string): Promise<string> {
-  const term = encodeURIComponent(`${artist} ${title}`)
-  const url = `https://itunes.apple.com/search?term=${term}&media=music&entity=song&limit=1`
-  try {
-    const data = await httpsGetJson(url) as { results?: Array<{ artworkUrl100?: string }> }
-    const raw = data.results?.[0]?.artworkUrl100 ?? ""
-    // Upgrade to 600x600 by replacing the size token in the URL
-    return raw ? raw.replace("100x100bb", "600x600bb") : ""
-  } catch {
-    return ""
-  }
-}
-
-/** Fetches the user's top tracks from Last.fm, with artwork from iTunes. */
+/** Fetches the user's top tracks from Last.fm. */
 export async function getTopTracks(
   username: string,
   period: Period = "overall",
   limit = 50
-): Promise<Track[]> {
+): Promise<Array<{ title: string; artist: string; playCount: number; lastfmUrl: string }>> {
   const apiKey = process.env.LASTFM_API_KEY!
   const url = `${API_BASE}/?method=user.getTopTracks&user=${encodeURIComponent(username)}&api_key=${apiKey}&period=${period}&limit=${limit}&format=json`
   const data = await httpsGetJson(url) as Record<string, unknown>
 
-  if ((data as Record<string, unknown>).error) {
+  if (data.error) {
     throw new Error(`Last.fm error ${data.error}: ${data.message}`)
   }
 
   const toptracks = (data.toptracks as { track?: unknown[] })?.track ?? []
 
-  const tracks = toptracks.map((t: unknown) => {
+  return toptracks.map((t: unknown) => {
     const track = t as {
       name: string
       artist: { name: string }
@@ -101,12 +87,6 @@ export async function getTopTracks(
       lastfmUrl: track.url,
     }
   })
-
-  const artworks = await Promise.all(
-    tracks.map((t) => getItunesArtwork(t.artist, t.title))
-  )
-
-  return tracks.map((t, i) => ({ ...t, albumCover: artworks[i] }))
 }
 
 /** Fetches basic user info from Last.fm. */
