@@ -13,6 +13,7 @@ export interface Track {
   albumCover: string
   playCount: number
   lastfmUrl: string
+  youtubeVideoId: string | null
 }
 
 export type Period = "overall" | "12month" | "6month" | "3month" | "7day"

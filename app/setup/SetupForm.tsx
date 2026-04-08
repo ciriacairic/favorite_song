@@ -98,7 +98,7 @@ export default function SetupForm({ username }: { username: string }) {
         disabled={loading}
         className="self-start rounded-full bg-red-600 px-8 py-3 text-base font-semibold text-white transition-colors hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {loading ? "Fetching…" : "Fetch my top tracks"}
+        {loading ? "Fetching tracks & videos…" : "Fetch my top tracks"}
       </button>
 
       {/* Error */}

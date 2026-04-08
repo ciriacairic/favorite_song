@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getTopTracks } from "@/lib/lastfm"
+import { getCachedSong, cacheSong } from "@/lib/songCache"
+import { searchYouTubeVideoId } from "@/lib/youtube"
 import type { Period } from "@/types"
 
 const VALID_PERIODS: Period[] = ["overall", "12month", "6month", "3month", "7day"]
@@ -22,7 +24,30 @@ export async function GET(req: NextRequest) {
 
   try {
     const tracks = await getTopTracks(username, period, limit)
-    return NextResponse.json({ tracks })
+
+    // Check cache for all tracks in parallel
+    const cached = await Promise.all(
+      tracks.map((t) => getCachedSong(t.artist, t.title))
+    )
+
+    // For cache misses, fetch from YouTube and write to cache
+    const videoIds = await Promise.all(
+      tracks.map(async (t, i) => {
+        if (cached[i] !== null) {
+          return cached[i]!.youtube_video_id
+        }
+        const videoId = await searchYouTubeVideoId(t.title, t.artist)
+        await cacheSong(t.artist, t.title, videoId, t.albumCover).catch(console.error)
+        return videoId
+      })
+    )
+
+    const enrichedTracks = tracks.map((t, i) => ({
+      ...t,
+      youtubeVideoId: videoIds[i] ?? null,
+    }))
+
+    return NextResponse.json({ tracks: enrichedTracks })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }
