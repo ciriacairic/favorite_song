@@ -16,6 +16,7 @@ export default function GameBoard() {
   const router = useRouter()
   const [bracket, setBracket] = useState<BracketState | null>(null)
   const [picking, setPicking] = useState<"a" | "b" | null>(null)
+  const [expandedCover, setExpandedCover] = useState<string | null>(null)
 
   useEffect(() => {
     const raw = sessionStorage.getItem("bracket_tracks")
@@ -75,79 +76,159 @@ export default function GameBoard() {
   const progress = getProgress(bracket)
 
   return (
-    <div className="flex flex-1 flex-col items-center gap-6 px-6 py-12">
+    <div className="flex flex-1 flex-col items-center gap-10 px-6 py-8">
       {/* Round info */}
       <div className="flex flex-col items-center gap-1 text-center">
-        <p className="text-xs font-medium tracking-widest uppercase text-zinc-500">
+        <p className="text-base font-semibold tracking-widest uppercase text-zinc-300">
           {label}
         </p>
-        <p className="text-sm text-zinc-600">
+        <p className="text-base text-zinc-500">
           Match {progress.current} of {progress.total}
         </p>
       </div>
 
-      <p className="text-zinc-400 text-sm">Which song do you like more?</p>
-
-      {/* Matchup cards */}
-      <div className="flex flex-col sm:flex-row items-stretch gap-4 w-full max-w-3xl">
+      {/* Matchup */}
+      <div className="flex flex-col sm:flex-row items-stretch gap-10 w-full max-w-5xl">
         <TrackCard
           track={trackA}
-          onClick={() => choose("a")}
+          side="left"
+          onPick={() => choose("a")}
+          onExpandCover={setExpandedCover}
           selected={picking === "a"}
           dimmed={picking === "b"}
         />
-        <div className="flex items-center justify-center text-zinc-600 font-bold text-lg shrink-0 py-2 sm:py-0">
+
+        <div className="flex items-center justify-center text-zinc-700 font-bold text-base shrink-0 py-2 sm:py-0">
           VS
         </div>
+
         <TrackCard
           track={trackB}
-          onClick={() => choose("b")}
+          side="right"
+          onPick={() => choose("b")}
+          onExpandCover={setExpandedCover}
           selected={picking === "b"}
           dimmed={picking === "a"}
         />
       </div>
+
+      {/* Cover lightbox */}
+      {expandedCover && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setExpandedCover(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={expandedCover}
+            alt=""
+            className="max-w-[90vw] max-h-[90vh] rounded-2xl shadow-2xl object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   )
 }
 
 function TrackCard({
   track,
-  onClick,
+  side,
+  onPick,
+  onExpandCover,
   selected,
   dimmed,
 }: {
   track: Track
-  onClick: () => void
+  side: "left" | "right"
+  onPick: () => void
+  onExpandCover: (url: string) => void
   selected: boolean
   dimmed: boolean
 }) {
   return (
-    <button
-      onClick={onClick}
-      className={`flex flex-col items-center gap-4 rounded-2xl border p-6 flex-1 transition-all duration-200 cursor-pointer
-        ${selected ? "border-white bg-zinc-800 scale-[1.03]" : ""}
-        ${dimmed ? "opacity-25 scale-95" : ""}
-        ${!selected && !dimmed ? "border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900" : ""}
+    <div
+      className={`flex flex-col rounded-2xl border overflow-hidden flex-1 transition-all duration-200
+        ${selected ? "border-white scale-[1.02]" : ""}
+        ${dimmed ? "opacity-20 scale-[0.98]" : ""}
+        ${!selected && !dimmed ? "border-zinc-800" : ""}
       `}
     >
-      {track.albumCover ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={track.albumCover}
-          alt=""
-          className="w-40 h-40 rounded-xl object-cover"
+      {/* Track info — clickable to pick */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onPick}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onPick() }}
+        className={`flex items-center gap-5 px-5 py-5 cursor-pointer
+          hover:bg-zinc-800/60 active:bg-zinc-800 transition-colors
+          ${side === "right" ? "flex-row-reverse" : ""}
+        `}
+      >
+        {/* Album cover — click to expand */}
+        {track.albumCover ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); onExpandCover(track.albumCover) }}
+            className="shrink-0 rounded-xl overflow-hidden focus:outline-none"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={track.albumCover}
+              alt=""
+              className="w-28 h-28 object-cover hover:scale-105 transition-transform duration-200"
+            />
+          </button>
+        ) : (
+          <div className="w-28 h-28 rounded-xl bg-zinc-800 shrink-0" />
+        )}
+
+        <div className={`flex flex-col gap-1 min-w-0 flex-1 ${side === "right" ? "items-end text-right" : ""}`}>
+          <span className="font-bold text-lg leading-tight line-clamp-2">
+            {track.title}
+          </span>
+          <span className="text-sm text-zinc-400 truncate w-full">{track.artist}</span>
+          <span className="text-xs text-zinc-600 mt-1">
+            {track.playCount.toLocaleString()} plays
+          </span>
+        </div>
+      </div>
+
+      {/* Video */}
+      {track.youtubeVideoId ? (
+        <iframe
+          src={`https://www.youtube.com/embed/${track.youtubeVideoId}`}
+          className="w-full aspect-video"
+          allow="encrypted-media; picture-in-picture"
+          allowFullScreen
         />
       ) : (
-        <div className="w-40 h-40 rounded-xl bg-zinc-800" />
+        <div className="w-full aspect-video bg-zinc-900 flex items-center justify-center">
+          <span className="text-zinc-600 text-sm">No video found</span>
+        </div>
       )}
-      <div className="flex flex-col items-center gap-1 text-center">
-        <span className="font-semibold text-base leading-snug">{track.title}</span>
-        <span className="text-sm text-zinc-400">{track.artist}</span>
-        <span className="text-xs text-zinc-600 mt-1">
-          {track.playCount.toLocaleString()} plays
-        </span>
-      </div>
-    </button>
+
+      {/* Choose button */}
+      <button
+        onClick={onPick}
+        className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 active:bg-zinc-700
+          flex items-center justify-center transition-colors group"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="22"
+          height="22"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-zinc-500 group-hover:text-white transition-colors"
+        >
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      </button>
+    </div>
   )
 }
 
