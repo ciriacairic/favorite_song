@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import type { Track, Period, BracketSize } from "@/types"
 
 const PERIODS: { value: Period; label: string }[] = [
@@ -14,11 +15,18 @@ const PERIODS: { value: Period; label: string }[] = [
 const BRACKET_SIZES: BracketSize[] = [8, 16, 32, 64]
 
 export default function SetupForm({ username }: { username: string }) {
+  const router = useRouter()
   const [period, setPeriod] = useState<Period>("overall")
   const [size, setSize] = useState<BracketSize>(32)
   const [tracks, setTracks] = useState<Track[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  function startGame() {
+    if (!tracks) return
+    sessionStorage.setItem("bracket_tracks", JSON.stringify(tracks))
+    router.push("/game")
+  }
 
   async function fetchTracks() {
     setLoading(true)
@@ -98,12 +106,18 @@ export default function SetupForm({ username }: { username: string }) {
         <p className="text-red-400 text-sm">{error}</p>
       )}
 
-      {/* Track list */}
+      {/* Track list + start */}
       {tracks && (
         <div className="flex flex-col gap-1">
-          <p className="text-sm text-zinc-500 mb-2">
-            {tracks.length} tracks fetched
-          </p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm text-zinc-500">{tracks.length} tracks fetched</p>
+            <button
+              onClick={startGame}
+              className="rounded-full bg-red-600 px-6 py-2 text-sm font-semibold text-white hover:bg-red-500 transition-colors"
+            >
+              Start Game →
+            </button>
+          </div>
           {tracks.map((track, i) => (
             <div
               key={`${track.artist}-${track.title}`}
