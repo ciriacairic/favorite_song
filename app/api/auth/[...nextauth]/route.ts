@@ -3,6 +3,14 @@ import type { AuthOptions } from "next-auth"
 import type { OAuthConfig } from "next-auth/providers/oauth"
 import type { TokenSet } from "next-auth"
 import { getLastfmSession, getUserInfo } from "@/lib/lastfm"
+import { createClient } from "@supabase/supabase-js"
+
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+  )
+}
 
 interface LastFmProfile {
   id: string
@@ -78,6 +86,16 @@ const LastFmProvider: OAuthConfig<LastFmProfile> = {
 export const authOptions: AuthOptions = {
   providers: [LastFmProvider],
   callbacks: {
+    async signIn({ user }) {
+      const username = user.id
+      if (username) {
+        const supabase = getSupabaseAdmin()
+        await supabase
+          .from("users")
+          .upsert({ username }, { onConflict: "username" })
+      }
+      return true
+    },
     async jwt({ token, user }) {
       if (user) {
         token.lastfmSessionKey = (user as LastFmProfile).sessionKey
