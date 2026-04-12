@@ -126,9 +126,10 @@ function MatchupCard({
 }) {
   const { songA, songB, winner } = node
   const hasWinner = !!winner
-  // Use reference equality — the same Track object flows through the bracket
-  const winA = hasWinner && !!songA && winner === songA
-  const winB = hasWinner && !!songB && winner === songB
+  const sameTrack = (a: Track | undefined, b: Track | undefined) =>
+    !!a && !!b && (a === b || (!!a.songCacheId && a.songCacheId === b.songCacheId))
+  const winA = hasWinner && sameTrack(winner, songA)
+  const winB = hasWinner && sameTrack(winner, songB)
 
   return (
     <div

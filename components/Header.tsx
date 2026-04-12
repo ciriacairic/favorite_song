@@ -10,7 +10,12 @@ export default async function Header() {
       <span className="font-semibold tracking-tight">favorite song</span>
       {session?.lastfmUsername && (
         <div className="flex items-center gap-4">
-          <span className="text-sm text-zinc-400">{session.lastfmUsername}</span>
+          <a
+            href={`/user/${session.lastfmUsername}`}
+            className="text-sm text-zinc-400 hover:text-white transition-colors"
+          >
+            {session.lastfmUsername}
+          </a>
           <SignOutButton />
         </div>
       )}
