@@ -25,6 +25,7 @@ export default function SetupForm({ username }: { username: string }) {
   function startGame() {
     if (!tracks) return
     sessionStorage.setItem("bracket_tracks", JSON.stringify(tracks))
+    sessionStorage.setItem("bracket_meta", JSON.stringify({ period, size }))
     router.push("/game")
   }
 
@@ -110,10 +111,18 @@ export default function SetupForm({ username }: { username: string }) {
       {tracks && (
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-sm text-zinc-500">{tracks.length} tracks fetched</p>
+            <div className="flex flex-col gap-1">
+              <p className="text-sm text-zinc-500">{tracks.length} tracks fetched</p>
+              {tracks.length < size && (
+                <p className="text-sm text-amber-400">
+                  Not enough tracks for a bracket of {size} — you need at least {size} scrobbles in this period.
+                </p>
+              )}
+            </div>
             <button
               onClick={startGame}
-              className="rounded-full bg-red-600 px-6 py-2 text-sm font-semibold text-white hover:bg-red-500 transition-colors"
+              disabled={tracks.length < size}
+              className="rounded-full bg-red-600 px-6 py-2 text-sm font-semibold text-white hover:bg-red-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Start Game →
             </button>

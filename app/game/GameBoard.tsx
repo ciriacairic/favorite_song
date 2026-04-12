@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import type { Track } from "@/types"
 import {
@@ -12,36 +12,103 @@ import {
   type BracketState,
 } from "@/lib/bracket"
 
+async function createGame(period: string, trackCount: number): Promise<string | null> {
+  try {
+    const res = await fetch("/api/game", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ period, trackCount }),
+    })
+    const data = await res.json()
+    return data.gameId ?? null
+  } catch {
+    return null
+  }
+}
+
+function saveMatchup(
+  gameId: string,
+  round: number,
+  position: number,
+  trackA: Track,
+  trackB: Track,
+  winner: Track
+) {
+  if (!trackA.songCacheId || !trackB.songCacheId || !winner.songCacheId) return
+  fetch(`/api/game/${gameId}/matchup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      round,
+      position,
+      songAId: trackA.songCacheId,
+      songBId: trackB.songCacheId,
+      winnerId: winner.songCacheId,
+    }),
+  }).catch(console.error)
+}
+
+function finalizeGame(gameId: string, winner: Track) {
+  if (!winner.songCacheId) return
+  fetch(`/api/game/${gameId}/winner`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ winnerId: winner.songCacheId }),
+  }).catch(console.error)
+}
+
 export default function GameBoard() {
   const router = useRouter()
   const [bracket, setBracket] = useState<BracketState | null>(null)
   const [picking, setPicking] = useState<"a" | "b" | null>(null)
   const [expandedCover, setExpandedCover] = useState<string | null>(null)
+  const gameIdRef = useRef<string | null>(null)
+  const finalizedRef = useRef(false)
+  const gameCreatingRef = useRef(false)
 
   useEffect(() => {
     const raw = sessionStorage.getItem("bracket_tracks")
+    const meta = sessionStorage.getItem("bracket_meta")
     if (!raw) {
       router.replace("/setup")
       return
     }
     try {
       const tracks: Track[] = JSON.parse(raw)
+      const { period, size } = meta ? JSON.parse(meta) : { period: "overall", size: tracks.length }
       setBracket(buildBracket(tracks))
+      if (!gameCreatingRef.current) {
+        gameCreatingRef.current = true
+        createGame(period, size).then((id) => { gameIdRef.current = id })
+      }
     } catch {
       router.replace("/setup")
     }
   }, [router])
 
+  // Finalize game when bracket completes
+  useEffect(() => {
+    if (!bracket?.completed || !bracket.winner || finalizedRef.current) return
+    finalizedRef.current = true
+    if (gameIdRef.current) {
+      finalizeGame(gameIdRef.current, bracket.winner)
+    }
+  }, [bracket?.completed, bracket?.winner])
+
   const choose = useCallback(
     (side: "a" | "b") => {
       if (picking || !bracket) return
+      const matchup = getCurrentMatchup(bracket)
+      if (!matchup) return
+      const [trackA, trackB] = matchup
+      const winner = side === "a" ? trackA : trackB
       setPicking(side)
+      if (gameIdRef.current) {
+        saveMatchup(gameIdRef.current, bracket.currentRound, bracket.currentPosition, trackA, trackB, winner)
+      }
       setTimeout(() => {
         setBracket((prev) => {
           if (!prev) return prev
-          const matchup = getCurrentMatchup(prev)
-          if (!matchup) return prev
-          const winner = side === "a" ? matchup[0] : matchup[1]
           return pickWinner(prev, winner)
         })
         setPicking(null)

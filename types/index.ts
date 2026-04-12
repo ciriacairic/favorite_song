@@ -14,6 +14,7 @@ export interface Track {
   playCount: number
   lastfmUrl: string
   youtubeVideoId: string | null
+  songCacheId?: string
 }
 
 export type Period = "overall" | "12month" | "6month" | "3month" | "7day"

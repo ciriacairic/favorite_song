@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 
 export interface CachedSong {
+  id: string
   youtube_video_id: string | null
   album_cover: string | null
 }
@@ -12,7 +13,7 @@ export async function getCachedSong(
   const supabase = await createClient()
   const { data } = await supabase
     .from("song_cache")
-    .select("youtube_video_id, album_cover")
+    .select("id, youtube_video_id, album_cover")
     .eq("artist", artist)
     .eq("title", title)
     .single()
@@ -24,10 +25,15 @@ export async function cacheSong(
   title: string,
   youtubeVideoId: string | null,
   albumCover?: string | null
-): Promise<void> {
+): Promise<string | null> {
   const supabase = await createClient()
-  await supabase.from("song_cache").upsert(
-    { artist, title, youtube_video_id: youtubeVideoId, album_cover: albumCover },
-    { onConflict: "artist,title" }
-  )
+  const { data } = await supabase
+    .from("song_cache")
+    .upsert(
+      { artist, title, youtube_video_id: youtubeVideoId, album_cover: albumCover },
+      { onConflict: "artist,title" }
+    )
+    .select("id")
+    .single()
+  return data?.id ?? null
 }
