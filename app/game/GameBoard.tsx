@@ -11,6 +11,7 @@ import {
   getProgress,
   type BracketState,
 } from "@/lib/bracket"
+import BracketTree from "@/components/BracketTree"
 
 async function createGame(period: string, trackCount: number): Promise<string | null> {
   try {
@@ -129,6 +130,7 @@ export default function GameBoard() {
     return (
       <WinnerScreen
         winner={bracket.winner}
+        bracket={bracket}
         onPlayAgain={() => router.push("/setup")}
       />
     )
@@ -301,38 +303,52 @@ function TrackCard({
 
 function WinnerScreen({
   winner,
+  bracket,
   onPlayAgain,
 }: {
   winner: Track
+  bracket: BracketState
   onPlayAgain: () => void
 }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-8 px-6 py-16 text-center">
-      <p className="text-xs font-medium tracking-widest uppercase text-zinc-500">
-        Your Favorite Song
-      </p>
-      <div className="flex flex-col items-center gap-5">
+    <div className="flex flex-1 items-center gap-10 px-8 py-12 overflow-x-auto">
+      {/* Winner card — fixed width, vertically centered */}
+      <div className="flex flex-col items-center gap-5 text-center shrink-0 w-52 sticky left-0">
+        <p className="text-xs font-medium tracking-widest uppercase text-zinc-500">
+          Your Favorite Song
+        </p>
         {winner.albumCover ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={winner.albumCover}
             alt=""
-            className="w-52 h-52 rounded-2xl object-cover shadow-2xl"
+            className="w-44 h-44 rounded-2xl object-cover shadow-2xl"
           />
         ) : (
-          <div className="w-52 h-52 rounded-2xl bg-zinc-800" />
+          <div className="w-44 h-44 rounded-2xl bg-zinc-800" />
         )}
         <div className="flex flex-col gap-1">
-          <h2 className="text-3xl font-bold">{winner.title}</h2>
-          <p className="text-zinc-400 text-lg">{winner.artist}</p>
+          <h2 className="text-2xl font-bold leading-tight">{winner.title}</h2>
+          <p className="text-zinc-400">{winner.artist}</p>
         </div>
+        <button
+          onClick={onPlayAgain}
+          className="rounded-full bg-zinc-800 px-6 py-2.5 text-sm font-semibold hover:bg-zinc-700 transition-colors"
+        >
+          Play Again
+        </button>
       </div>
-      <button
-        onClick={onPlayAgain}
-        className="rounded-full bg-zinc-800 px-8 py-3 text-sm font-semibold hover:bg-zinc-700 transition-colors"
-      >
-        Play Again
-      </button>
+
+      {/* Divider */}
+      <div className="self-stretch w-px bg-zinc-800 shrink-0" />
+
+      {/* Full bracket */}
+      <div className="flex flex-1 flex-col items-center gap-3 overflow-x-auto">
+        <p className="text-xs font-semibold tracking-widest uppercase text-zinc-500">
+          Full Bracket
+        </p>
+        <BracketTree bracket={bracket} />
+      </div>
     </div>
   )
 }
