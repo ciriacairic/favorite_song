@@ -158,11 +158,13 @@ function ConnectorSVG({
   round,
   totalHeight,
   matchupCount,
+  yOffset = 0,
 }: {
   n: number
   round: number
   totalHeight: number
   matchupCount: number
+  yOffset?: number
 }) {
   const mid = CONN_W / 2
   const pairs = matchupCount / 2
@@ -174,8 +176,8 @@ function ConnectorSVG({
       className="shrink-0 overflow-visible"
     >
       {Array.from({ length: pairs }, (_, p) => {
-        const yA = centerY(n, round, p * 2)
-        const yB = centerY(n, round, p * 2 + 1)
+        const yA = centerY(n, round, p * 2) - yOffset
+        const yB = centerY(n, round, p * 2 + 1) - yOffset
         const yMid = (yA + yB) / 2
         return (
           <g key={p} stroke="#3f3f46" strokeWidth={1} fill="none">
@@ -221,32 +223,47 @@ function ChampionCard({ track }: { track: Track }) {
 
 // ─── main export ─────────────────────────────────────────────────────────────
 
-export default function BracketTree({ bracket }: { bracket: BracketState }) {
+export default function BracketTree({
+  bracket,
+  startRound = 0,
+}: {
+  bracket: BracketState
+  startRound?: number
+}) {
   const n = bracket.rounds[0]?.length ?? 0
   // Guard: n must be a power of 2
   if (!n || !Number.isInteger(Math.log2(n))) return null
 
-  const totalHeight = n * SLOT_H
   const totalRounds = Math.log2(n)
+  const first = Math.min(startRound, totalRounds - 1)
+
+  // yOffset: how many pixels to chop from the top (and symmetrically from the bottom)
+  const yOffset = first > 0 ? centerY(n, first, 0) - SLOT_H : 0
+  const visibleHeight = n * SLOT_H - 2 * yOffset
+
   const matchupsByRound = deriveMatchups(bracket)
+  const visibleRounds = matchupsByRound.slice(first)
 
   return (
-    <div className="overflow-auto">
-      <div className="inline-flex flex-col min-w-max pb-4 px-4">
+    <div className="bracket-scroll">
+      <div className="inline-flex flex-col min-w-max pb-4 pt-2 px-4">
 
         {/* ── Round labels row ─────────────────────────────────────────────── */}
         <div className="flex items-end mb-2">
-          {matchupsByRound.map((_, r) => (
-            <div key={r} className="flex items-center">
-              <div
-                className="text-xs font-semibold tracking-widest uppercase text-zinc-500 text-center"
-                style={{ width: CARD_W }}
-              >
-                {getRoundLabel(n, r)}
+          {visibleRounds.map((_, vi) => {
+            const r = vi + first
+            return (
+              <div key={r} className="flex items-center">
+                <div
+                  className="text-xs font-semibold tracking-widest uppercase text-zinc-500 text-center"
+                  style={{ width: CARD_W }}
+                >
+                  {getRoundLabel(n, r)}
+                </div>
+                {r < totalRounds - 1 && <div style={{ width: CONN_W }} />}
               </div>
-              {r < totalRounds - 1 && <div style={{ width: CONN_W }} />}
-            </div>
-          ))}
+            )
+          })}
           {bracket.winner && (
             <>
               <div style={{ width: CONN_W }} />
@@ -262,53 +279,57 @@ export default function BracketTree({ bracket }: { bracket: BracketState }) {
 
         {/* ── Bracket row ──────────────────────────────────────────────────── */}
         <div className="flex items-start">
-          {matchupsByRound.map((matchups, r) => (
-            <div key={r} className="flex items-start shrink-0">
-              {/* Cards column */}
-              <div
-                className="relative shrink-0"
-                style={{ width: CARD_W, height: totalHeight }}
-              >
-                {matchups.map((node, m) => {
-                  const isActive =
-                    !bracket.completed &&
-                    r === bracket.currentRound &&
-                    m === bracket.currentPosition
-                  return (
-                    <MatchupCard
-                      key={m}
-                      node={node}
-                      top={Math.round(centerY(n, r, m) - SLOT_H)}
-                      isActive={isActive}
-                    />
-                  )
-                })}
-              </div>
+          {visibleRounds.map((matchups, vi) => {
+            const r = vi + first
+            return (
+              <div key={r} className="flex items-start shrink-0">
+                {/* Cards column */}
+                <div
+                  className="relative shrink-0"
+                  style={{ width: CARD_W, height: visibleHeight }}
+                >
+                  {matchups.map((node, m) => {
+                    const isActive =
+                      !bracket.completed &&
+                      r === bracket.currentRound &&
+                      m === bracket.currentPosition
+                    return (
+                      <MatchupCard
+                        key={m}
+                        node={node}
+                        top={Math.round(centerY(n, r, m) - SLOT_H - yOffset)}
+                        isActive={isActive}
+                      />
+                    )
+                  })}
+                </div>
 
-              {/* Connector to next round */}
-              {r < totalRounds - 1 && (
-                <ConnectorSVG
-                  n={n}
-                  round={r}
-                  totalHeight={totalHeight}
-                  matchupCount={matchups.length}
-                />
-              )}
-            </div>
-          ))}
+                {/* Connector to next round */}
+                {r < totalRounds - 1 && (
+                  <ConnectorSVG
+                    n={n}
+                    round={r}
+                    totalHeight={visibleHeight}
+                    matchupCount={matchups.length}
+                    yOffset={yOffset}
+                  />
+                )}
+              </div>
+            )
+          })}
 
           {/* Straight connector + champion card */}
           {bracket.winner && (
             <>
               <div
                 className="shrink-0 flex items-center"
-                style={{ width: CONN_W, height: totalHeight }}
+                style={{ width: CONN_W, height: visibleHeight }}
               >
                 <div className="w-full h-px bg-zinc-700/70" />
               </div>
               <div
                 className="shrink-0 flex items-center justify-center"
-                style={{ width: CARD_W, height: totalHeight }}
+                style={{ width: CARD_W, height: visibleHeight }}
               >
                 <ChampionCard track={bracket.winner} />
               </div>

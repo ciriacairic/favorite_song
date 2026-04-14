@@ -13,6 +13,14 @@ import {
 } from "@/lib/bracket"
 import BracketTree from "@/components/BracketTree"
 
+interface PendingMatchup {
+  round: number
+  position: number
+  trackA: Track
+  trackB: Track
+  winner: Track
+}
+
 async function createGame(period: string, trackCount: number): Promise<string | null> {
   try {
     const res = await fetch("/api/game", {
@@ -27,7 +35,7 @@ async function createGame(period: string, trackCount: number): Promise<string | 
   }
 }
 
-function saveMatchup(
+function postMatchup(
   gameId: string,
   round: number,
   position: number,
@@ -66,6 +74,7 @@ export default function GameBoard() {
   const gameIdRef = useRef<string | null>(null)
   const finalizedRef = useRef(false)
   const gameCreatingRef = useRef(false)
+  const pendingMatchupsRef = useRef<PendingMatchup[]>([])
 
   useEffect(() => {
     const raw = sessionStorage.getItem("bracket_tracks")
@@ -80,7 +89,15 @@ export default function GameBoard() {
       setBracket(buildBracket(tracks))
       if (!gameCreatingRef.current) {
         gameCreatingRef.current = true
-        createGame(period, size).then((id) => { gameIdRef.current = id })
+        createGame(period, size).then((id) => {
+          if (!id) return
+          gameIdRef.current = id
+          // Flush any matchups that were picked before the game was created
+          for (const m of pendingMatchupsRef.current) {
+            postMatchup(id, m.round, m.position, m.trackA, m.trackB, m.winner)
+          }
+          pendingMatchupsRef.current = []
+        })
       }
     } catch {
       router.replace("/setup")
@@ -105,7 +122,15 @@ export default function GameBoard() {
       const winner = side === "a" ? trackA : trackB
       setPicking(side)
       if (gameIdRef.current) {
-        saveMatchup(gameIdRef.current, bracket.currentRound, bracket.currentPosition, trackA, trackB, winner)
+        postMatchup(gameIdRef.current, bracket.currentRound, bracket.currentPosition, trackA, trackB, winner)
+      } else {
+        pendingMatchupsRef.current.push({
+          round: bracket.currentRound,
+          position: bracket.currentPosition,
+          trackA,
+          trackB,
+          winner,
+        })
       }
       setTimeout(() => {
         setBracket((prev) => {
@@ -311,9 +336,9 @@ function WinnerScreen({
   onPlayAgain: () => void
 }) {
   return (
-    <div className="flex flex-1 items-center gap-10 px-8 py-12 overflow-x-auto">
-      {/* Winner card — fixed width, vertically centered */}
-      <div className="flex flex-col items-center gap-5 text-center shrink-0 w-52 sticky left-0">
+    <div className="flex flex-1 min-h-0">
+      {/* Winner card — fixed left panel, scrolls independently on Y */}
+      <div className="flex flex-col items-center gap-5 text-center shrink-0 w-56 px-6 py-10 overflow-y-auto border-r border-zinc-800">
         <p className="text-xs font-medium tracking-widest uppercase text-zinc-500">
           Your Favorite Song
         </p>
@@ -322,14 +347,14 @@ function WinnerScreen({
           <img
             src={winner.albumCover}
             alt=""
-            className="w-44 h-44 rounded-2xl object-cover shadow-2xl"
+            className="w-40 h-40 rounded-2xl object-cover shadow-2xl"
           />
         ) : (
-          <div className="w-44 h-44 rounded-2xl bg-zinc-800" />
+          <div className="w-40 h-40 rounded-2xl bg-zinc-800" />
         )}
         <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-bold leading-tight">{winner.title}</h2>
-          <p className="text-zinc-400">{winner.artist}</p>
+          <h2 className="text-xl font-bold leading-tight">{winner.title}</h2>
+          <p className="text-zinc-400 text-sm">{winner.artist}</p>
         </div>
         <button
           onClick={onPlayAgain}
@@ -339,15 +364,15 @@ function WinnerScreen({
         </button>
       </div>
 
-      {/* Divider */}
-      <div className="self-stretch w-px bg-zinc-800 shrink-0" />
-
-      {/* Full bracket */}
-      <div className="flex flex-1 flex-col items-center gap-3 overflow-x-auto">
-        <p className="text-xs font-semibold tracking-widest uppercase text-zinc-500">
+      {/* Full bracket — scrolls both axes */}
+      <div className="flex-1 min-w-0 bracket-scroll pt-4">
+        <p className="text-xs font-semibold tracking-widest uppercase text-zinc-500 text-center pb-2">
           Full Bracket
         </p>
-        <BracketTree bracket={bracket} />
+        <BracketTree
+          bracket={bracket}
+          startRound={Math.max(0, Math.log2(bracket.rounds[0]?.length ?? 8) - 3)}
+        />
       </div>
     </div>
   )

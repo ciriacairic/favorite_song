@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getTopTracks } from "@/lib/lastfm"
-import { getItunesArtwork } from "@/lib/itunes"
+import { getItunesInfo } from "@/lib/itunes"
 import { getCachedSong, cacheSong } from "@/lib/songCache"
 import { searchYouTubeVideoId } from "@/lib/youtube"
 import type { Period, Track } from "@/types"
@@ -31,22 +31,32 @@ export async function GET(req: NextRequest) {
       rawTracks.map((t) => getCachedSong(t.artist, t.title))
     )
 
-    // For cache misses, fetch iTunes + YouTube in parallel, then write to cache
+    // For cache misses OR cached entries missing album, fetch iTunes + YouTube, then write to cache
     const enriched = await Promise.all(
       rawTracks.map(async (t, i) => {
-        if (cached[i] !== null) {
+        const hit = cached[i]
+        if (hit !== null && hit.album) {
+          // Fully cached — nothing to fetch
           return {
-            songCacheId: cached[i]!.id,
-            albumCover: cached[i]!.album_cover ?? "",
-            youtubeVideoId: cached[i]!.youtube_video_id,
+            songCacheId: hit.id,
+            albumCover: hit.album_cover ?? "",
+            youtubeVideoId: hit.youtube_video_id,
           }
         }
-        const [albumCover, youtubeVideoId] = await Promise.all([
-          getItunesArtwork(t.artist, t.title),
-          searchYouTubeVideoId(t.title, t.artist),
+        const needsYoutube = hit === null || !hit.youtube_video_id
+        const [itunesInfo, youtubeVideoId] = await Promise.all([
+          getItunesInfo(t.artist, t.title),
+          needsYoutube ? searchYouTubeVideoId(t.title, t.artist) : Promise.resolve(hit!.youtube_video_id),
         ])
-        const songCacheId = await cacheSong(t.artist, t.title, youtubeVideoId, albumCover).catch(() => null)
-        return { songCacheId: songCacheId ?? undefined, albumCover, youtubeVideoId }
+        const { artwork: albumCover, albumName } = itunesInfo
+        const songCacheId = await cacheSong(
+          t.artist, t.title, youtubeVideoId, albumCover, albumName
+        ).catch(() => null)
+        return {
+          songCacheId: songCacheId ?? hit?.id ?? undefined,
+          albumCover: albumCover || hit?.album_cover || "",
+          youtubeVideoId,
+        }
       })
     )
 

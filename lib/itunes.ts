@@ -16,20 +16,38 @@ function httpsGetJson(url: string): Promise<unknown> {
   })
 }
 
-/** Fetches album artwork from the iTunes Search API. Returns "" if not found. */
+export interface ItunesResult {
+  artwork: string
+  albumName: string
+}
+
+/** Fetches album artwork and album name from the iTunes Search API. */
 export async function getItunesArtwork(
   artist: string,
   title: string
 ): Promise<string> {
+  const result = await getItunesInfo(artist, title)
+  return result.artwork
+}
+
+/** Fetches album artwork and album name from the iTunes Search API. */
+export async function getItunesInfo(
+  artist: string,
+  title: string
+): Promise<ItunesResult> {
   const term = encodeURIComponent(`${artist} ${title}`)
   const url = `https://itunes.apple.com/search?term=${term}&media=music&entity=song&limit=1`
   try {
     const data = (await httpsGetJson(url)) as {
-      results?: Array<{ artworkUrl100?: string }>
+      results?: Array<{ artworkUrl100?: string; collectionName?: string }>
     }
-    const raw = data.results?.[0]?.artworkUrl100 ?? ""
-    return raw ? raw.replace("100x100bb", "600x600bb") : ""
+    const hit = data.results?.[0]
+    const raw = hit?.artworkUrl100 ?? ""
+    return {
+      artwork: raw ? raw.replace("100x100bb", "600x600bb") : "",
+      albumName: hit?.collectionName ?? "",
+    }
   } catch {
-    return ""
+    return { artwork: "", albumName: "" }
   }
 }
