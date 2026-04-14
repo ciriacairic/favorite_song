@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# favorite song
 
-## Getting Started
+**https://favorite-song-seven.vercel.app**
 
-First, run the development server:
+Descubra sua música favorita através de um torneio de brackets gerado a partir do seu histórico real de reprodução do Last.fm.
+
+## Como funciona
+
+1. Faça login com sua conta do Last.fm
+2. Escolha o período e o tamanho do bracket (8, 16, 32 ou 64 músicas)
+3. Vote em confrontos diretos entre as suas músicas mais ouvidas
+4. No final, veja o bracket completo a partir das quartas de final e descubra qual música venceu
+
+## Stack
+
+- **Next.js 16** (App Router) + React 19 + TypeScript
+- **Tailwind CSS 4**
+- **NextAuth v4** com provider customizado para Last.fm
+- **Supabase** para persistência de jogos e histórico
+- **Last.fm API** para buscar as músicas mais ouvidas
+- **iTunes Search API** para capas de álbum
+- **YouTube Data API v3** para embeds de vídeo
+
+## Rodando localmente
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Crie um arquivo `.env.local` com as seguintes variáveis:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```env
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+LASTFM_API_KEY=
+LASTFM_API_SECRET=
 
-## Learn More
+YOUTUBE_API_KEY=
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+```
