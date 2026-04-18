@@ -10,7 +10,6 @@ export interface GlobalStats {
   mostSeededSong: { title: string; artist: string; albumCover: string; appearances: number } | null
   mostSeededArtist: { artist: string; appearances: number } | null
   mostSeededAlbum: { album: string; albumCover: string; appearances: number } | null
-  mostActivePlayer: { username: string; games: number } | null
 }
 
 export async function GET() {
@@ -31,16 +30,6 @@ export async function GET() {
   // Total unique players
   const uniquePlayers = new Set(completedGames?.map((g) => g.username) ?? [])
   const totalPlayers = uniquePlayers.size
-
-  // Most active player
-  const playerCounts: Record<string, number> = {}
-  for (const g of completedGames ?? []) {
-    playerCounts[g.username] = (playerCounts[g.username] ?? 0) + 1
-  }
-  const topPlayerEntry = Object.entries(playerCounts).sort((a, b) => b[1] - a[1])[0]
-  const mostActivePlayer = topPlayerEntry
-    ? { username: topPlayerEntry[0], games: topPlayerEntry[1] }
-    : null
 
   // Collect all winner IDs
   const winnerIds = (completedGames ?? []).map((g) => g.winner_id as string)
@@ -193,7 +182,6 @@ export async function GET() {
     mostSeededSong,
     mostSeededArtist,
     mostSeededAlbum,
-    mostActivePlayer,
   }
 
   return NextResponse.json(stats, {

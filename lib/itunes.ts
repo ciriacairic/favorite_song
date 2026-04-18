@@ -35,17 +35,32 @@ export async function getItunesInfo(
   artist: string,
   title: string
 ): Promise<ItunesResult> {
-  const term = encodeURIComponent(`${artist} ${title}`)
-  const url = `https://itunes.apple.com/search?term=${term}&media=music&entity=song&limit=1`
+  const term = encodeURIComponent(`${title} ${artist}`)
+  // Fetch up to 5 results to find the best artist match
+  const url = `https://itunes.apple.com/search?term=${term}&media=music&entity=song&limit=5`
   try {
     const data = (await httpsGetJson(url)) as {
-      results?: Array<{ artworkUrl100?: string; collectionName?: string }>
+      results?: Array<{
+        artworkUrl100?: string
+        collectionName?: string
+        artistName?: string
+      }>
     }
-    const hit = data.results?.[0]
-    const raw = hit?.artworkUrl100 ?? ""
+    const results = data.results ?? []
+    if (results.length === 0) return { artwork: "", albumName: "" }
+
+    const normalizedArtist = artist.toLowerCase()
+    // Pick the result whose artistName best matches the expected artist
+    const best =
+      results.find((r) => {
+        const ra = (r.artistName ?? "").toLowerCase()
+        return ra.includes(normalizedArtist) || normalizedArtist.includes(ra)
+      }) ?? results[0]
+
+    const raw = best?.artworkUrl100 ?? ""
     return {
       artwork: raw ? raw.replace("100x100bb", "600x600bb") : "",
-      albumName: hit?.collectionName ?? "",
+      albumName: best?.collectionName ?? "",
     }
   } catch {
     return { artwork: "", albumName: "" }

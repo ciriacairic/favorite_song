@@ -31,6 +31,10 @@ body {
   scrollbar-color: #52525b transparent;
 }
 
+.bracket-scroll {
+  overflow: auto;
+}
+
 @supports (overflow: overlay) {
   .bracket-scroll {
     overflow: overlay;

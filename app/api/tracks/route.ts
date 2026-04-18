@@ -6,12 +6,22 @@ import { searchYouTubeVideoId } from "@/lib/youtube"
 import type { Period, Track } from "@/types"
 
 const VALID_PERIODS: Period[] = ["overall", "12month", "6month", "3month", "7day"]
+const MAX_ENRICHED = 64
+
+function fisherYates<T>(arr: T[]): T[] {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const username = searchParams.get("username")
   const period = (searchParams.get("period") ?? "overall") as Period
-  const limit = parseInt(searchParams.get("limit") ?? "32", 10)
+  const mode = searchParams.get("mode") ?? "standard"
 
   if (!username) {
     return NextResponse.json({ error: "username required" }, { status: 400 })
@@ -19,12 +29,21 @@ export async function GET(req: NextRequest) {
   if (!VALID_PERIODS.includes(period)) {
     return NextResponse.json({ error: "invalid period" }, { status: 400 })
   }
-  if (![8, 16, 32, 64].includes(limit)) {
-    return NextResponse.json({ error: "invalid limit" }, { status: 400 })
+  if (!["standard", "random"].includes(mode)) {
+    return NextResponse.json({ error: "invalid mode" }, { status: 400 })
   }
 
   try {
-    const rawTracks = await getTopTracks(username, period, limit)
+    let rawTracks: Awaited<ReturnType<typeof getTopTracks>>
+
+    if (mode === "random") {
+      // Fetch top 200 (Last.fm errors on very high limits), shuffle, take MAX_ENRICHED for enrichment
+      const all = await getTopTracks(username, period, 200)
+      rawTracks = fisherYates(all).slice(0, MAX_ENRICHED)
+    } else {
+      // Standard: always fetch top MAX_ENRICHED tracks in play-count order
+      rawTracks = await getTopTracks(username, period, MAX_ENRICHED)
+    }
 
     // Check cache for all tracks in parallel
     const cached = await Promise.all(
@@ -36,7 +55,6 @@ export async function GET(req: NextRequest) {
       rawTracks.map(async (t, i) => {
         const hit = cached[i]
         if (hit !== null && hit.album) {
-          // Fully cached — nothing to fetch
           return {
             songCacheId: hit.id,
             albumCover: hit.album_cover ?? "",

@@ -162,7 +162,7 @@ function BracketModal({
             Loading bracket…
           </div>
         ) : bracket ? (
-          <div className="flex justify-center min-h-full p-6">
+          <div className="p-4">
             <BracketTree bracket={bracket} />
           </div>
         ) : (

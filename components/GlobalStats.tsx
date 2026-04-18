@@ -260,24 +260,6 @@ export default function GlobalStats() {
         </div>
       </div>
 
-      {/* most active player */}
-      {stats.mostActivePlayer && stats.mostActivePlayer.games > 1 && (
-        <div>
-          <SectionHeading>
-            <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-6">
-              Top player
-            </h2>
-          </SectionHeading>
-          <div className="max-w-xs">
-            <StatCard
-              label="Most games played"
-              value={stats.mostActivePlayer.username}
-              sub={`${stats.mostActivePlayer.games} games completed`}
-              delay={0}
-            />
-          </div>
-        </div>
-      )}
     </section>
   )
 }

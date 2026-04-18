@@ -3,7 +3,9 @@ export async function searchYouTubeVideoId(
   artist: string
 ): Promise<string | null> {
   const q = encodeURIComponent(`${title} ${artist}`)
-  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=${q}&key=${process.env.YOUTUBE_API_KEY}`
+  const apiKey = process.env.YOUTUBE_API_KEY
+  // videoEmbeddable=true filters out videos that cannot be embedded
+  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=${q}&videoEmbeddable=true&key=${apiKey}`
 
   const res = await fetch(url)
   if (!res.ok) return null
