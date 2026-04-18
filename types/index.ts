@@ -21,6 +21,8 @@ export type Period = "overall" | "12month" | "6month" | "3month" | "7day"
 
 export type BracketSize = 8 | 16 | 32 | 64
 
+export type GameType = "personal" | "genre" | "country" | "artist"
+
 export interface Game {
   id: string
   lastfmUser: string

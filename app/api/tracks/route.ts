@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getTopTracks } from "@/lib/lastfm"
-import { getItunesInfo } from "@/lib/itunes"
+import { getTopTracks, getTagTopTracks, getChartTopTracks, getGeoTopTracks, getArtistTopTracks, getTrackAlbum } from "@/lib/lastfm"
+import { getItunesInfo, getItunesAlbumArtwork } from "@/lib/itunes"
 import { getCachedSong, cacheSong } from "@/lib/songCache"
 import { searchYouTubeVideoId } from "@/lib/youtube"
 import type { Period, Track } from "@/types"
@@ -17,74 +17,125 @@ function fisherYates<T>(arr: T[]): T[] {
   return a
 }
 
+type RawTrack = { title: string; artist: string; playCount: number; lastfmUrl: string }
+
+async function withConcurrency<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let next = 0
+  async function worker() {
+    while (next < items.length) {
+      const i = next++
+      results[i] = await fn(items[i], i)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
+}
+
+async function enrichTracks(rawTracks: RawTrack[]): Promise<Track[]> {
+  const cached = await Promise.all(rawTracks.map((t) => getCachedSong(t.artist, t.title)))
+
+  const enriched = await withConcurrency(
+    rawTracks,
+    4,
+    async (t, i) => {
+      const hit = cached[i]
+
+      // Full cache hit — have both cover and video, nothing to fetch
+      if (hit?.album_cover && hit?.youtube_video_id) {
+        return {
+          songCacheId: hit.id,
+          albumCover: hit.album_cover,
+          youtubeVideoId: hit.youtube_video_id,
+        }
+      }
+
+      const needsYoutube = !hit?.youtube_video_id
+      const needsCover = !hit?.album_cover
+
+      const [itunesInfo, youtubeVideoId] = await Promise.all([
+        needsCover
+          ? getItunesInfo(t.artist, t.title)
+          : Promise.resolve({ artwork: hit!.album_cover!, albumName: hit!.album ?? "" }),
+        needsYoutube
+          ? searchYouTubeVideoId(t.title, t.artist)
+          : Promise.resolve(hit!.youtube_video_id),
+      ])
+
+      let { artwork: albumCover, albumName } = itunesInfo
+
+      // Fallback: get album name from Last.fm and search iTunes by album
+      if (needsCover && !albumCover) {
+        const lastfmAlbum = await getTrackAlbum(t.artist, t.title).catch(() => null)
+        if (lastfmAlbum) {
+          albumCover = await getItunesAlbumArtwork(t.artist, lastfmAlbum).catch(() => "")
+          if (!albumName) albumName = lastfmAlbum
+        }
+      }
+
+      // Never overwrite existing good data with empty
+      const coverToSave = albumCover || hit?.album_cover || ""
+      const albumToSave = albumName || hit?.album || null
+
+      const songCacheId = await cacheSong(t.artist, t.title, youtubeVideoId, coverToSave, albumToSave).catch(() => null)
+      return {
+        songCacheId: songCacheId ?? hit?.id ?? undefined,
+        albumCover: coverToSave,
+        youtubeVideoId,
+      }
+    }
+  )
+
+  return rawTracks.map((t, i) => ({
+    ...t,
+    songCacheId: enriched[i].songCacheId,
+    albumCover: enriched[i].albumCover,
+    youtubeVideoId: enriched[i].youtubeVideoId,
+  }))
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const username = searchParams.get("username")
-  const period = (searchParams.get("period") ?? "overall") as Period
-  const mode = searchParams.get("mode") ?? "standard"
-
-  if (!username) {
-    return NextResponse.json({ error: "username required" }, { status: 400 })
-  }
-  if (!VALID_PERIODS.includes(period)) {
-    return NextResponse.json({ error: "invalid period" }, { status: 400 })
-  }
-  if (!["standard", "random"].includes(mode)) {
-    return NextResponse.json({ error: "invalid mode" }, { status: 400 })
-  }
+  const gameType = searchParams.get("gameType") ?? "personal"
 
   try {
-    let rawTracks: Awaited<ReturnType<typeof getTopTracks>>
+    let rawTracks: RawTrack[]
 
-    if (mode === "random") {
-      // Fetch top 200 (Last.fm errors on very high limits), shuffle, take MAX_ENRICHED for enrichment
-      const all = await getTopTracks(username, period, 200)
+    if (gameType === "personal") {
+      const username = searchParams.get("username")
+      const period = (searchParams.get("period") ?? "overall") as Period
+      const mode = searchParams.get("mode") ?? "standard"
+
+      if (!username) return NextResponse.json({ error: "username required" }, { status: 400 })
+      if (!VALID_PERIODS.includes(period)) return NextResponse.json({ error: "invalid period" }, { status: 400 })
+      if (!["standard", "random"].includes(mode)) return NextResponse.json({ error: "invalid mode" }, { status: 400 })
+
+      if (mode === "random") {
+        const all = await getTopTracks(username, period, 200)
+        rawTracks = fisherYates(all).slice(0, MAX_ENRICHED)
+      } else {
+        rawTracks = await getTopTracks(username, period, MAX_ENRICHED)
+      }
+    } else if (gameType === "genre") {
+      const tag = searchParams.get("tag")
+      if (!tag) return NextResponse.json({ error: "tag required" }, { status: 400 })
+      const all = await getTagTopTracks(tag, 200)
       rawTracks = fisherYates(all).slice(0, MAX_ENRICHED)
+    } else if (gameType === "country") {
+      const country = searchParams.get("country")
+      if (!country) return NextResponse.json({ error: "country required" }, { status: 400 })
+      rawTracks = country === "global"
+        ? await getChartTopTracks(MAX_ENRICHED)
+        : await getGeoTopTracks(country, MAX_ENRICHED)
+    } else if (gameType === "artist") {
+      const artist = searchParams.get("artist")
+      if (!artist) return NextResponse.json({ error: "artist required" }, { status: 400 })
+      rawTracks = await getArtistTopTracks(artist, MAX_ENRICHED)
     } else {
-      // Standard: always fetch top MAX_ENRICHED tracks in play-count order
-      rawTracks = await getTopTracks(username, period, MAX_ENRICHED)
+      return NextResponse.json({ error: "invalid gameType" }, { status: 400 })
     }
 
-    // Check cache for all tracks in parallel
-    const cached = await Promise.all(
-      rawTracks.map((t) => getCachedSong(t.artist, t.title))
-    )
-
-    // For cache misses OR cached entries missing album, fetch iTunes + YouTube, then write to cache
-    const enriched = await Promise.all(
-      rawTracks.map(async (t, i) => {
-        const hit = cached[i]
-        if (hit !== null && hit.album) {
-          return {
-            songCacheId: hit.id,
-            albumCover: hit.album_cover ?? "",
-            youtubeVideoId: hit.youtube_video_id,
-          }
-        }
-        const needsYoutube = hit === null || !hit.youtube_video_id
-        const [itunesInfo, youtubeVideoId] = await Promise.all([
-          getItunesInfo(t.artist, t.title),
-          needsYoutube ? searchYouTubeVideoId(t.title, t.artist) : Promise.resolve(hit!.youtube_video_id),
-        ])
-        const { artwork: albumCover, albumName } = itunesInfo
-        const songCacheId = await cacheSong(
-          t.artist, t.title, youtubeVideoId, albumCover, albumName
-        ).catch(() => null)
-        return {
-          songCacheId: songCacheId ?? hit?.id ?? undefined,
-          albumCover: albumCover || hit?.album_cover || "",
-          youtubeVideoId,
-        }
-      })
-    )
-
-    const tracks: Track[] = rawTracks.map((t, i) => ({
-      ...t,
-      songCacheId: enriched[i].songCacheId,
-      albumCover: enriched[i].albumCover,
-      youtubeVideoId: enriched[i].youtubeVideoId,
-    }))
-
+    const tracks = await enrichTracks(rawTracks)
     return NextResponse.json({ tracks })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })

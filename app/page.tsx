@@ -23,7 +23,7 @@ export default async function Home() {
 
         {session ? (
           <Link
-            href="/setup"
+            href="/modes"
             className="rounded-full bg-red-600 px-8 py-3 text-base font-semibold text-white transition-colors hover:bg-red-500"
           >
             Play →
